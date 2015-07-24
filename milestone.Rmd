@@ -1,0 +1,327 @@
+---
+title: "Coursera Data Science Capstone: Milestone Report"
+author: "Nathan Smith"
+output: html_document
+---
+***
+# Introduction 
+
+Swiftkey has sponsored a project for the students in the Data Science Specialization offered through Coursera and The Johns Hopkins University. Swiftkey builds smart keyboards for mobile devices that utilize predictive text models to make typing on a small device easier, quicker, and less error-prone. One cornerstone of their smart keyboard is the three word options presented at the top of the keyboard as a user types his sentence. In this capstone, we will build a predictive model similar to the one Swiftkey has built. This report is meant to illustrate the data sources we will use in our model, our sampling methodology from a massive set of English language sentences from various sources: news articles, blogs, and twitter posts, and some exploratory analysis and summary statistics of the data as a first pass. This report is meant for a non-data scientist manager so I will suppress some of the code for this analysis but it is all available on [github](https://github.com/nhsmith85/CourseraCapstone).  
+
+***
+
+## Steps of Analysis
+
+I would like to highlight the steps for the process of building our predictive model. 
+
+1. Data Acquisition
+2. Sampling
+3. Data Cleansing and Preliminary Exploratory Analysis
+4. Corpus Building, Tokenization, Further Exploratory Analysis
+5. Word and n-gram Frequency Identification and Isolation
+6. Predictive Model Assembly
+
+***
+
+Let's cover the first step in this whole process: obtaining the data to build our model.  
+``` {r, eval=FALSE}
+### Obtaining the data from the coursera site
+url <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+if (!file.exists("/Users/nathansmith/CourseraCapstone/Coursera-Swiftkey.zip")){
+    download.file(url, destfile="/Users/nathansmith/CourseraCapstone/Coursera-Swiftkey.zip", method="curl")
+}
+```
+
+There are a lot of files in the zipped folder so we will only unzip the ones with the "en" prefix (i.e., only the English language items). 
+``` {r, eval=FALSE}
+# unzipping the files we want (english)
+files <- unzip("Coursera-SwiftKey.zip", list=T) # list the files in the zipped folder
+enIndex <- grep("en", files$Name) # grabs the index of all the names that start with "en"
+unzip("Coursera-SwiftKey.zip", files=files[enIndex,1], exdir = "/Users/nathansmith/CourseraCapstone/en")
+list.files("/Users/nathansmith/CourseraCapstone/en/final/en_US")
+```
+
+Now we need to read the data into R using the `readLines` function and get some simple stats on each file. There is probably a better way to do this so as to only read in a sample of lines as oppossed to reading the entire dataset into R, but we are not exploring that technique here. 
+``` {r, echo=FALSE}
+setwd("/Users/nathansmith/CourseraCapstone/en/final/en_US") # make sure we are aimed at the right directory
+news <- readLines("en_US.news.txt", skipNul = T)
+size_of_news <- format(object.size(news), units = "Mb")
+news_line_count <- length(news)
+med_char_news <- median(nchar(news))
+
+blogs <- readLines("en_US.blogs.txt", skipNul = T)
+size_of_blogs <- format(object.size(blogs), units = "Mb")
+blog_line_count <- length(blogs)
+med_char_blogs <- median(nchar(blogs))
+
+twit <- readLines("en_US.twitter.txt", skipNul = T)
+size_of_twit <- format(object.size(twit), units = "Mb")
+twit_line_count <- length(twit)
+med_char_twit <- median(nchar(twit))
+
+```
+
+The size of the files, number of lines, and median number of character are presented below: 
+
+Data Type | Size of File | Line Count | Median Char Count
+---|---|---|---
+**News** | `r size_of_news` | `r news_line_count` | `r med_char_news`
+**Blog** | `r size_of_blogs` | `r blog_line_count` | `r med_char_blogs`
+**Twitter**| `r size_of_twit` | `r twit_line_count` | `r med_char_twit`
+
+If we wanted to look at a histogram to see the distribution of the number of words in each of the file types we can use Hadley Wickham's `stringi` package for this. 
+
+``` {r, echo=FALSE}
+suppressWarnings(library(stringi))
+
+# summary stats on the number of words in a string
+news.W.count   <- stri_count_words(news) 
+blogs.W.count   <- stri_count_words(blogs) 
+twit.W.count <- stri_count_words(twit) 
+
+par(mfrow=c(1,3))
+hist(news.W.count, breaks=100, main="News word count",xlab="no. of words")
+hist(blogs.W.count, breaks=100, main="Blogs word count", xlab="no. of words")
+hist(twit.W.count, breaks=100, main="Twitter word count", xlab="no. of words")
+```
+
+I also think it is interesting to see the number of characters in a string across the 3 data types; particularly interesting is that most tweets don't even use the limit of 140 characters, they are often under 50 characters. 
+``` {r, echo=FALSE}
+par(mfrow=c(1,3))
+hist(nchar(news), breaks = 500)
+hist(nchar(blogs), breaks = 500)
+hist(nchar(twit), breaks = 500)
+par(mfrow=c(1,1)) # resetting plot grid
+```
+
+***
+
+### Sampling the Data
+
+We don't need all of this data to build our model, we only need a small sample. We will use a random sample of 50,000 lines of text from each dataset, which will result in a combined data set of 150,000 lines. Below is the code used to select the random sample and to save that file into another directory so we can create a database and Corpus from it. 
+``` {r, eval=FALSE}
+# saving off random samples of each data set
+# news
+set.seed(300)
+Snews <- sample(news, size = 50000) # random sample of 50,000 lines
+if (!file.exists("sample/en_US.news.sample.txt")) {
+    write(Snews,"sample/en_US.news.sample.txt")
+}
+rm(Snews);rm(news)
+
+# blogs
+set.seed(322)
+Sblogs <- sample(blogs, size=50000)
+if (!file.exists("sample/en_US.blogs.sample.txt")) {
+    write(Sblogs,"sample/en_US.blogs.sample.txt")
+}
+rm(Sblogs);rm(blogs)
+
+# twitter
+set.seed(323)
+Stwit <- sample(twit, size=50000)
+if (!file.exists("sample/en_US.twitter.sample.txt")) {
+    write(Stwit,"sample/en_US.twitter.sample.txt")
+}
+rm(Stwit);rm(twit)
+
+```
+
+***
+
+### Building the Corpus
+In order to make use of all the great analysis tools in the `tm` package written by [Ingo Feinerer](https://cran.r-project.org/web/packages/tm/vignettes/tm.pdf) we need to build a Corpus using the `tm` and `filehash` package to make a database to save our samples in.  
+``` {r, eval=FALSE}
+library(filehash)
+library(tm)
+setwd("/Users/nathansmith/CourseraCapstone/en/final/en_US")
+# copy of the database to perform our various transformations and data cleansing on
+TransCorpus <- PCorpus(DirSource("sample"), dbControl = list( dbName = "TransCorpus2.db", dbType = "DB1"))
+```
+
+#### Transforming the Corpus into Something Useful
+We will have to perform a lot of data cleansing on the data set to isolate what's important and make it easier to use the `tm` package to work it's magic. We will use a custom removal function that will take whatever general expression we want to remove and replace it with blank space (which we'll remove later all at once). We will remove URLs, dashes, and RT/via's from twitter file. 
+``` {r, eval=FALSE}
+# custom removal function
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, "", x))
+
+# remove URLs
+TransCorpus <- tm_map(TransCorpus, toSpace, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+# removing / and @
+TransCorpus <- tm_map(TransCorpus, toSpace,  "/|@|\\|")
+# remove retweet and via labels
+TransCorpus <- tm_map(TransCorpus, toSpace, "RT |via ")
+```
+
+And now we can use the standard function removals that Ingo was so clever to build into `tm`. 
+``` {r, eval=FALSE}
+# standard removals
+TransCorpus <- tm_map(TransCorpus, content_transformer(tolower))
+TransCorpus <- tm_map(TransCorpus, removeWords, stopwords("english"))
+TransCorpus <- tm_map(TransCorpus, removePunctuation)
+TransCorpus <- tm_map(TransCorpus, removeNumbers)
+```
+
+If we don't want to accidently predict a curse word in our app then we have to make sure they've been taken out of our training data. We will source our list of curse words from this [site](http://www.frontgatemedia.com/a-list-of-723-bad-words-to-blacklist-and-how-to-use-facebooks-moderation-tool/).
+``` {r, eval=FALSE}
+# profanity filtering 
+# http://www.frontgatemedia.com/a-list-of-723-bad-words-to-blacklist-and-how-to-use-facebooks-moderation-tool/
+url <- "http://www.frontgatemedia.com/new/wp-content/uploads/2014/03/Terms-to-Block.csv"
+if (!file.exists("profanity.csv")) {
+   download.file(url, destfile = "profanity.csv", method = "curl")
+}
+profanity <- read.csv("profanity.csv", stringsAsFactors=FALSE, skip = 3)
+head(profanity)
+profanity <- profanity[,2]
+profanity <- unlist(gsub(",", "", profanity))
+profanity <- unique(profanity)
+head(profanity)
+TransCorpus <- tm_map(TransCorpus, removeWords, profanity)
+```
+
+The final step in data cleansing for now is to remove all the extra white space we've created in our previous steps. 
+``` {r, eval=FALSE}
+# last step of removals is to remove extra whitespace
+TransCorpus <- tm_map(TransCorpus, stripWhitespace)
+```
+
+#### Tokenization
+We need to understand the frequencies of words and word pairs across the three data sources. Additionally, we need know to the frequencies of what are called n-grams (1-gram is one word, bi-gram is a word pair, and tri-gram is a set of three words). We will use the `RWeka` and `tm` packages for this. 
+
+``` {r, eval = FALSE}
+library(RWeka)
+library(tm)
+# tokenizers
+options(mc.cores=1)
+BiGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+TriGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+```
+
+The next tool we use is called a Document Term Matrix which is essentially a table that displays how many times a word appears using 1 or 0 in each line. We will use this tool to get our count of n-grams to determine which ones are most common in each data set and display them in a wordcloud and bar chart. 
+``` {r, eval=FALSE}
+library(wordcloud)
+library(RColorBrewer)
+library(filehash)
+pal <- brewer.pal(8, "Dark2")
+
+### NEWS
+
+# news 1-gram
+news.dtm <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[2]]$content)))
+news.dtm.sparse <- removeSparseTerms(news.dtm, 0.999)
+rm(news.dtm)
+news.freq <- sort(colSums(as.matrix(news.dtm.sparse)), decreasing=TRUE)
+wordcloud(names(news.freq), news.freq, min.freq=100, max.words=100, colors=pal)
+barplot(news.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(news.dtm.sparse)
+
+# news bi-gram
+news.dtm.bi <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[2]]$content)), 
+                                  control=list(tokenize = BiGramTokenizer))
+news.dtm.bi.sparse <- removeSparseTerms(news.dtm.bi, 0.999)
+rm(news.dtm.bi)
+news.bi.freq <- sort(colSums(as.matrix(news.dtm.bi.sparse)), decreasing=TRUE)
+wordcloud(names(news.bi.freq), news.bi.freq, min.freq=100, max.words=100)
+barplot(news.bi.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(news.dtm.bi)
+
+
+# news tri-gram
+news.dtm.tri.sparse <- removeSparseTerms(news.dtm.tri, 0.999)
+rm(news.dtm.tri)
+news.tri.freq <- sort(colSums(as.matrix(news.dtm.tri.sparse)), decreasing=TRUE)
+wordcloud(names(news.tri.freq), news.tri.freq, min.freq=100, max.words=100)
+barplot(news.tri.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(news.dtm.tri)
+```
+In the interest of keeping this report brief, I won't show all of the n-gram plots, but I will show the bi-gram wordcloud. The larger the phrase appears in the wordcloud the more frequent it appears in the dataset.  
+![News](/Users/nathansmith/CourseraCapstone/en/final/en_US/graphs/news-bi-cloud.png)
+
+``` {r, eval=FALSE}
+### BLOGS
+
+# blogs uni-gram
+blogs.dtm <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[1]]$content)))
+blogs.dtm.sparse <- removeSparseTerms(blogs.dtm, 0.999)
+blogs.freq <- sort(colSums(as.matrix(blogs.dtm.sparse)), decreasing=TRUE)
+wordcloud(names(blogs.freq), blogs.freq, min.freq=100, max.words=100)
+barplot(blogs.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(blogs.dtm)
+rm(blogs.dtm.sparse)
+
+# blogs bi-gram
+blogs.dtm.bi <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[1]]$content)), 
+                                   control=list(tokenize = BiGramTokenizer))
+blogs.dtm.bi.sparse <- removeSparseTerms(blogs.dtm.bi, 0.999)
+blogs.bi.freq <- sort(colSums(as.matrix(blogs.dtm.bi.sparse)), decreasing=TRUE)
+wordcloud(names(blogs.bi.freq), blogs.bi.freq, min.freq=100, max.words=100)
+barplot(blogs.bi.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(blogs.dtm.bi)
+rm(blogs.dtm.bi.sparse)
+
+# blogs tri-gram
+blogs.dtm.tri <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[1]]$content)), 
+                                     control=list(tokenize = TriGramTokenizer))
+blogs.dtm.tri.sparse <- removeSparseTerms(blogs.dtm.tri, 0.999)
+rm(blogs.dtm.tri)
+blogs.tri.freq <- sort(colSums(as.matrix(blogs.dtm.tri.sparse)), decreasing=TRUE)
+wordcloud(names(blogs.tri.freq), blogs.tri.freq, min.freq=100, max.words=100)
+barplot(blogs.tri.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(blogs.dtm.tri.sparse)
+```
+![Blogs](/Users/nathansmith/CourseraCapstone/en/final/en_US/graphs/blogs-bi-cloud.png)
+
+
+``` {r, eval=FALSE}
+### TWITTER
+
+# twit uni-gram
+twit.dtm <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[3]]$content)))
+twit.dtm.sparse <- removeSparseTerms(twit.dtm, 0.999)
+rm(twit.dtm)
+twit.freq <- sort(colSums(as.matrix(twit.dtm.sparse)), decreasing=TRUE)
+wordcloud(names(twit.freq), twit.freq, min.freq=100, max.words=100)
+barplot(twit.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+rm(twit.dtm.sparse)
+
+# twit bi-gram
+twit.dtm.bi <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[3]]$content)), 
+                                  control=list(tokenize = BiGramTokenizer))
+twit.dtm.bi.sparse <- removeSparseTerms(twit.dtm.bi, 0.999)
+rm(twit.dtm.bi)
+twit.bi.freq <- sort(colSums(as.matrix(twit.dtm.bi.sparse)), decreasing=TRUE)
+wordcloud(names(twit.bi.freq), twit.bi.freq, min.freq=100, max.words=100)
+barplot(twit.bi.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+
+
+# twit tri-gram
+twit.dtm.tri <- DocumentTermMatrix(VCorpus(VectorSource(TransCorpus[[3]]$content)), 
+                                    control=list(tokenize = TriGramTokenizer))
+twit.dtm.tri.sparse <- removeSparseTerms(twit.dtm.tri, 0.999)
+rm(twit.dtm.tri)
+twit.tri.freq <- sort(colSums(as.matrix(twit.dtm.tri.sparse)), decreasing=TRUE)
+wordcloud(names(twit.tri.freq), twit.tri.freq, min.freq=100, max.words=100)
+barplot(twit.tri.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
+```
+![Twitter](/Users/nathansmith/CourseraCapstone/en/final/en_US/graphs/twit-bi-cloud.png)
+
+***
+
+### Planning for Predictive Modeling Process 
+I wanted to look at the datasets separately to get a sense of how different the n-grams might be. It looks like the news articles tend to remark on places and events, blogs are more personal, and it looks like wishing someone "happy birthday" or "good morning" is the most popular thing to do with twitter. Removing the stop words doesn't seem to be creating tremendous problems in the phrases, but my guess is once you get up to 4-gram they will really start showing up as being necessary. We can already see a problem in the bi-gram "wait see" that was frequent in twitter should clearly be "wait and see". However, I have cleaned and pre-processed the sampling database and built the n-grams (will still need to look for most frequent 4-grams. The next steps are: 
+
+* Determine the optimal data set (should it be with or without stopwords)
+* Build n-gram frequency matrices
+* Design a model to use the matrices to rapidly select the most likely word (or n-gram)
+* Implement the backoff model for n-grams that aren't in my dataset. 
+* Determine an optimal structure to hold the data for the Shiny Application
+
+
+
+Thanks very much for reading,
+
+Nathan
+
+
+
+
