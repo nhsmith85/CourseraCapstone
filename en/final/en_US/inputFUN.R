@@ -3,8 +3,8 @@
 library(stringr)
 library(tm)
 
-# load word rankings (still need to make this)
-load("wordRank.rdata")
+# load word rankings database
+load("pred.RData")
 
 # Function for decomposing the input sentence
 predict <- function(input) {
@@ -65,10 +65,11 @@ predict <- function(input) {
       match <- pred1$pred[1:5]
   }
 
-  match$pred
+  match$pred[1:5]
 
 }
 
-# need to delete the last white space if user ends with a space
+
+
 
 
