@@ -1,22 +1,22 @@
+---
+output: html_document
+---
 
-#############################
-####### SAMPLING DATA #######
-# see getting data file for first iteration and for download code
+## Data Acquisition
 
-setwd("/Users/nathansmith/CourseraCapstone/en/final/en_US")
-news <- readLines("en_US.news.txt", skipNul = T)
-blogs <- readLines("en_US.blogs.txt", skipNul = T)
-twit <- readLines("en_US.twitter.txt", skipNul = T)
+The first step in the process of building a word prediction application is using a set of text data from the language you want to build your model in - this case is English. The good folks at Johns Hopkins Bloomberg School of Public Health provided us with a dataset of the following size:
 
-png("nchar.png")
-par(mfrow=c(1,3))
-hist(nchar(news), breaks = 500)
-hist(nchar(blogs), breaks = 500)
-hist(nchar(twit), breaks = 500)
-par(mfrow=c(1,1)) # resetting plot grid
-dev.off()
+***
+Type | File Size | Line Count 
+----|----|-----
+**News** | 249.6 MB | 1,010,242
+**Blog** | 248.5 MB | 899,288
+**Twitter**| 301.4 MB | 2,360,148
+***
 
+I randomly selected 50,000 rows of text data from each of the blog, news, and twitter datasets and combined them into a single dataset of 150,000 rows and roughly 13 MB. Below is the code used to select the random sample and to save that file into another directory so we can create a database and Corpus from it. 
 
+``` {r, eval=FALSE}
 # Sampling
 set.seed(300)
 Snews <- sample(news, size = 50000) # random sample of 50,000 lines
@@ -28,17 +28,16 @@ set.seed(323)
 Stwit <- sample(twit, size = 50000)
 write(Stwit,"ModelSample/en_US.twitter.sample.txt")
 
-rm(news);rm(blogs);rm(twit)
-
-# if coming back to this script use readlines to get the sampled back into R
-setwd("./ModelSample")
-Snews <- readLines("en_US.news.sample.txt", skipNul = T)
-Sblogs <- readLines("en_US.blogs.sample.txt", skipNul = T)
-Stwit <- readLines("en_US.twitter.sample.txt", skipNul = T)
-
 Sample <- c(Snews, Sblogs, Stwit)
-str(Sample)
 
+```
+
+***
+
+## Building the Corpus
+In order to make use of all the great analysis tools in the `tm` package written by [Ingo Feinerer](https://cran.r-project.org/web/packages/tm/vignettes/tm.pdf) we need to build a Corpus using the `tm` package to make a database to save our samples in. We will have to perform a lot of data cleansing on the data set to isolate what's important and make it easier to use the `tm` package to work it's magic. We will use a custom removal function that will take whatever general expression we want to remove and replace it with blank space (which we'll remove later all at once). We will remove URLs, dashes, and RT/via's from twitter file.
+
+``` {r, eval=FALSE}
 ##############################
 ##### MAKING THE CORPUS ######
 library(tm)
@@ -57,9 +56,13 @@ myCorpus <- tm_map(myCorpus, toSpace, "RT |via ")
 myCorpus <- tm_map(myCorpus, content_transformer(tolower))
 myCorpus <- tm_map(myCorpus, removePunctuation)
 myCorpus <- tm_map(myCorpus, removeNumbers)
+```
 
+
+If we don't want to accidently predict a curse word in our app then we have to make sure they've been taken out of our training data. We will source our list of curse words from this [site](http://www.frontgatemedia.com/a-list-of-723-bad-words-to-blacklist-and-how-to-use-facebooks-moderation-tool/).
+``` {r, eval=FALSE}
 # PROFANITY FILTERING
-setwd("/Users/nathansmith/CourseraCapstone/en/final/en_US")
+# setwd("/Users/nathansmith/CourseraCapstone/en/final/en_US")
 url <- "http://www.frontgatemedia.com/new/wp-content/uploads/2014/03/Terms-to-Block.csv"
 if (!file.exists("profanity.csv")) {
     download.file(url, destfile = "profanity.csv", method = "curl")
@@ -70,13 +73,18 @@ profanity <- unlist(gsub(",", "", profanity))
 profanity <- unique(profanity)
 myCorpus <- tm_map(myCorpus, removeWords, profanity)
 rm(profanity,Sample,Sblogs,Snews,Stwit)
+```
 
+The final step in data cleansing for now is to remove all the extra white space we've created in our previous steps. 
+``` {r, eval=FALSE}
 # WHITESPACE REMOVAL
 myCorpus <- tm_map(myCorpus, stripWhitespace)
+```
 
+#### Tokenization
+We need to understand the frequencies of words and word pairs across the three data sources. Additionally, we need know to the frequencies of what are called n-grams (1-gram is one word, bi-gram is a word pair, and tri-gram is a set of three words). We will use the `RWeka` and `tm` packages for this. 
 
-###############################
-#### EXPLORATORY ANALYSIS #####
+``` {r, eval = FALSE}
 library(tm)
 library(RWeka)
 
@@ -86,74 +94,60 @@ UniGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 1, max = 1)
 BiGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
 TriGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
 QuadGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 4, max = 4))
-    
+```
+
+The next tool we use is called a Document Term Matrix which is essentially a table that displays how many times a word appears using 1 or 0 in each line. We will use this tool to get our count of n-grams to determine which ones are most common in each data set and display them in a wordcloud and bar chart which you can see on the "Explore" tab.
+
+``` {r, eval=FALSE}
 # make DTMs
 uni.DTM <- DocumentTermMatrix(myCorpus, control = list(tokenize = UniGramTokenizer))
 bi.DTM <- DocumentTermMatrix(myCorpus, control = list(tokenize = BiGramTokenizer))
 tri.DTM <- DocumentTermMatrix(myCorpus, control = list(tokenize = TriGramTokenizer))
 quad.DTM <- DocumentTermMatrix(myCorpus, control = list(tokenize = QuadGramTokenizer))
 rm(myCorpus)
+```
 
+The DTM will pick up a lot of infrequently used words, so we need to reduce it's size and get rid of the rarely used words and phrases. 
+``` {r, eval = FALSE}
 # remove sparse terms
 uni.sparse <- removeSparseTerms(uni.DTM, 0.999)
 bi.sparse <- removeSparseTerms(bi.DTM, 0.9997) # extending the possible list
 tri.sparse <- removeSparseTerms(tri.DTM, 0.9999) # extending the possible list
 quad.sparse <- removeSparseTerms(quad.DTM, 0.9999) # extending the possible list
 rm(uni.DTM,bi.DTM,tri.DTM, quad.DTM)
-str(uni.sparse)
+```
 
+Using the sparse DTM we can then find word frequencies which will use to rank the most likely words or phrases. 
+``` {r, eval=FALSE}
 # find frequency rankings
 uni.freq <- sort(colSums(as.matrix(uni.sparse)), decreasing=TRUE)
 bi.freq <- sort(colSums(as.matrix(bi.sparse)), decreasing=TRUE)
 tri.freq <- sort(colSums(as.matrix(tri.sparse)), decreasing=TRUE)
 quad.freq <- sort(colSums(as.matrix(quad.sparse)), decreasing=TRUE)
- 
+```
+
+We need to make these tables into dataframes to perform operations on them. 
+``` {r, eval=FALSE}
 # making data frames of frequencies
 df.uni <- data.frame(word = names(uni.freq), freq = unname(uni.freq),  stringsAsFactors = FALSE)
 df.bi <- data.frame(word = names(bi.freq), freq = unname(bi.freq),  stringsAsFactors = FALSE)
 df.tri <- data.frame(word = names(tri.freq), freq = unname(tri.freq),  stringsAsFactors = FALSE)
 df.quad <- data.frame(word = names(quad.freq), freq = unname(quad.freq),  stringsAsFactors = FALSE)
-setwd("/Users/nathansmith/CourseraCapstone/en/final/en_US")
+# setwd("/Users/nathansmith/CourseraCapstone/shiny")
 save(df.uni,df.bi,df.tri,df.quad, file = "freq.RData")
-load("freq.RData")
+```
 
-# exploring frequencies
-wordcloud(names(bi.freq), bi.freq, min.freq=100, max.words=100)
-barplot(quad.freq[1:25], las = 2, col ="lightblue", main ="Most frequent words", ylab = "Word frequencies")
-library(googleVis)
-dftest <- data.frame(word = names(quad.freq), freq = unname(quad.freq),  stringsAsFactors = FALSE)
-str(dftest)
-Bar <- gvisBarChart(dftest[1:20,], options=list(
-    chartArea="{left:175,top:10,width:\"50%\",height:\"70%\"}",
-    colors = "['#cbb69d']",
-    titleTextStyle="{color:'black',fontName:'Times New Roman',fontSize:20}",
-    title="Freq of Top 20 n-grams"))
-plot(Bar)
+The final task is to separate out all the phrases with the first words in the phrase, the final word, and it's ranking. 
+``` {r, eval=FALSE}
 
-
-
-head(uni.freq,25)
-head(bi.freq,25)
-head(tri.freq,75)
-head(quad.freq,50)
-
-str(tri.freq)
-bi.freq[2]
-bi.freq.df <- as.data.frame(bi.freq)
-head(bi.freq.df)
-str(bi.freq.df)
-names(bi.freq)
-
-# split tokened n grams and unlist so you can search for a match on the first three letters and return the final one?
-
+# split tokened n grams and unlist so you can search for a match on the first three letters and return the final one
 library(qdap)
 
 # 4-gram data frame assembly
 df4 <- colsplit2df(data.frame(names(quad.freq)), sep = " ")
 df4$minus <- paste( df4[,1], df4[,2], df4[,3])
 pred4 <- data.frame( match=df4$minus, pred=df4$X4, freq=unname(quad.freq), stringsAsFactors = FALSE)
-str(pred4)
-head(pred4)
+
 
 # 3-gram data frame assembly
 df3 <- colsplit2df(data.frame(names(tri.freq)), sep = " ")
@@ -162,7 +156,6 @@ pred3 <- data.frame( match=df3$minus, pred=df3$X3, freq=unname(tri.freq), string
 str(pred3)
 head(pred3)
 pred3[pred3$match == c("a lot"),]
-
 
 # 2-gram data frame assembly
 df2 <- colsplit2df(data.frame(names(bi.freq)), sep = " ")
@@ -177,30 +170,10 @@ pred1 <- data.frame(match=names(uni.freq), pred=names(uni.freq), freq=unname(uni
 head(pred1)
 
 save(pred4,pred3,pred2,pred1, file = "pred.RData")
-
-predict("I have seen them in quite some")
-predict("in quite some")
-predict("bacon and a case of")
-predict("romantic date at the")
-predict("library doesn't")
-tail(tri.freq)
-tail(quad.freq)
-predict("what are your plans for the") 
-# still only giving one option, need to move down an n-gram also to give more suggestions
-
-head(pred2[pred2$match == "know",])
+```
 
 
-getwd()
-setwd("/Users/nathansmith/CourseraCapstone/shiny")
-load("pred.RData")
-str(pred.Rdata)
-rm(pred1,pred2,pred3,pred4)
 
-
-install.packages("shinythemes")
-
-rm(list=ls())
 
 
 

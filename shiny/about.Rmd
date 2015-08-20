@@ -1,0 +1,9 @@
+---
+title: "ABOUT"
+output: html_document
+---
+
+
+This is an app for predicting the next word in a sentence. It was designed as part of a Data Science Specialization capstone project offered through Johns Hopkins University and Coursera. The main goal of the project was to expose the students to a field of study called Natural Language Processing that has become incredibly useful given the explosion of text data available through the web and mobile devices. The requirements of the project were to attempt to replicate some features of the Swiftkey mobile keyboard application, which updates with word recommendations as the user types. Our data set of English words was approximately 800 MB of text data taken from blogs, news articles, and twitter updates. I made heavy use of the `tm` and `RWeka` packages for text mining (see the TEXT MINING tab for more detail). All the code is available on [Github](https://github.com/nhsmith85/CourseraCapstone). To learn more about me see my [LinkedIn](https://www.linkedin.com/pub/nathan-h-smith/7/40a/b01).      
+
+
