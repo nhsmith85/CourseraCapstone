@@ -8,16 +8,19 @@ shinyUI(
                tabPanel("PREDICT",
                         sidebarLayout(
                             sidebarPanel(width = 4,
-                                   textInput(inputId="text", label=h3("Enter your phrase below"), value="Type here" ),
-                                   helpText('Suggestions ranked by most likely at the top')
+                                   textInput(inputId="text", label=h3("Enter your phrase below"), value="Type here" )
+                                   # helpText('Suggestions ranked by most likely at the top')
                                    #  submitButton("Submit")
                             ),
                            mainPanel(
                                    h3("YOU ENTERED THIS PHRASE:"),
                                    tags$span(style="color:orange",tags$strong(tags$h3(textOutput("userInput")))),
                                    hr(),
-                                   h3("THE APPLICATION SUGGESTS:"),
+                                   h3("PRIMARY SUGGESTION:"),
                                    tags$span(style="color:red",tags$strong(tags$h3(tableOutput("nextWord1")))),
+                                   hr(),
+                                   h3("SUPPLEMENTAL SUGGESTIONS:"),
+                                   tags$span(style="color:red",tags$strong(tags$h3(tableOutput("nextWord2")))),
                                    hr(),
                                    tags$span(style="color:darked", tags$footer(("App Developer: Nathan Smith")))
                             )

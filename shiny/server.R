@@ -10,11 +10,14 @@ shinyServer(
         x <- reactive({
             input$text
         })
-        prediction <- reactive({
-            predList <- predict(as.character(input$text))
-            data.frame(predList)
+        prediction1 <- reactive({
+            predList1 <- predict1(as.character(input$text))
+            data.frame(predList1)
         })
-        
+        prediction2 <- reactive({
+            predList2 <- predict2(as.character(input$text))
+            data.frame(predList2)
+        })
         output$userInput <- renderText({
             # input$Submit
             x()
@@ -22,7 +25,12 @@ shinyServer(
         
         output$nextWord1 <- renderTable({
            #  input$Submit
-            prediction()
+             prediction1()
+        }, include.rownames = FALSE, include.colnames=FALSE)
+        
+        output$nextWord2 <- renderTable({
+            #  input$Submit
+            t(prediction2())
         }, include.rownames = FALSE, include.colnames=FALSE)
         
         datasetInput <- reactive({

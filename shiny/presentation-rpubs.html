@@ -780,7 +780,7 @@ hljs.initHighlightingOnLoad();
 
 <ol>
 <li>Enter your sentence in the input field and hit &ldquo;Submit&rdquo;.</li>
-<li>A set of 5 predicted words will show up in the table to the right with the most likely word ranked at the top.</li>
+<li>A primary suggestion for the next word will show up in the table to the right. There will be another table with supplementary suggestions beneath it. </li>
 <li>Read the DETAIL tab in the embedded app to learn more about the process of text mining on the Data/Sampling tab. </li>
 <li>Check out the EXPLORE tab in the embedded app to see the most frequent n-grams in the sampled Corpus. </li>
 </ol>
@@ -810,7 +810,7 @@ hljs.initHighlightingOnLoad();
 <li>Determine the length (n) of the cleaned sentence.</li>
 <li>If \( n >=3 \) then search for matches in the 4-gram matching on the \( n-2 \), \( n-1 \), and \( n \) words.</li>
 <li>If there are no matches, then <a href="https://en.wikipedia.org/wiki/Katz%27s_back-off_model">back-off</a> to the 3-gram and so on. </li>
-<li>Return the top 5 words in descending order of frequency.<br/></li>
+<li>Return the top words in descending order of likelihood.<br/></li>
 </ol>
 
 </div>

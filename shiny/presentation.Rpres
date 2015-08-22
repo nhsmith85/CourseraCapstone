@@ -18,7 +18,7 @@ Capstone Project
 **INSTRUCTIONS:**
 
 1. Enter your sentence in the input field and hit "Submit".
-2. A set of 5 predicted words will show up in the table to the right with the most likely word ranked at the top.
+2. A primary suggestion for the next word will show up in the table to the right. There will be another table with supplementary suggestions beneath it. 
 3. Read the DETAIL tab in the embedded app to learn more about the process of text mining on the Data/Sampling tab. 
 4. Check out the EXPLORE tab in the embedded app to see the most frequent n-grams in the sampled Corpus. 
 
@@ -36,7 +36,7 @@ The algorithm works as follows:
 2. Determine the length (n) of the cleaned sentence.
 3. If $n >=3$ then search for matches in the 4-gram matching on the $n-2$, $n-1$, and $n$ words.
 4. If there are no matches, then [back-off](https://en.wikipedia.org/wiki/Katz%27s_back-off_model) to the 3-gram and so on. 
-5. Return the top 5 words in descending order of frequency.  
+5. Return the top words in descending order of likelihood.  
 
 ========================================================
 <h1><font color="#E56717">Future Work</font></h1>
